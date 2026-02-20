@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pgsheet - CSV/JSON to Postgres SQL | pgtools</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav>
+  <div class="brand"><span>pg</span>tools</div>
+  <div class="tools">
+    <a href="/">Home</a>
+    <a href="/sheet" class="active">Sheet</a>
+    <a href="/query">Query</a>
+  </div>
+</nav>
+<div class="container">
+  <div class="page-header">
+    <h2><span style="color:var(--accent)">pg</span>sheet</h2>
+    <p>Paste CSV or JSON. Get production-ready Postgres SQL.</p>
+  </div>
+
+  <div class="controls">
+    <div class="control-group">
+      <label>Table:</label>
+      <input type="text" id="tableName" value="imported_data" placeholder="table_name" style="width:140px">
+    </div>
+    <div class="control-group">
+      <label>Schema:</label>
+      <input type="text" id="schemaName" value="public" placeholder="schema" style="width:100px">
+    </div>
+    <div class="checkbox-group">
+      <input type="checkbox" id="addId" checked>
+      <label for="addId">Auto ID</label>
+    </div>
+    <div class="checkbox-group">
+      <input type="checkbox" id="addIndexes" checked>
+      <label for="addIndexes">Indexes</label>
+    </div>
+    <span style="flex:1"></span>
+    <span class="sample-link" onclick="loadSample()">Load sample data</span>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-header">
+        <h3>Input Data</h3>
+        <span id="formatBadge"></span>
+      </div>
+      <textarea id="input" placeholder="Paste your CSV or JSON data here..."></textarea>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <h3>Output SQL</h3>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div class="tabs">
+            <button class="tab active" data-tab="ddl">DDL</button>
+            <button class="tab" data-tab="inserts">INSERT</button>
+            <button class="tab" data-tab="copy">COPY</button>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="copyOutput()">Copy</button>
+        </div>
+      </div>
+      <pre id="output" class="code-output"><span style="color:var(--muted)">SQL output will appear here...</span></pre>
+      <div class="stats" id="stats" style="display:none">
+        <span class="stat">Rows: <strong id="rowCount">0</strong></span>
+        <span class="stat">Columns: <strong id="colCount">0</strong></span>
+        <span class="stat">Format: <strong id="fmtLabel">-</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="columnsPanel" style="margin-top:20px;display:none">
+    <div class="panel-header"><h3>Column Analysis</h3></div>
+    <div class="info-panel">
+      <table class="data-table">
+        <thead><tr><th>Source</th><th>Postgres Name</th><th>Type</th><th>Nullable</th><th>Unique</th></tr></thead>
+        <tbody id="columnsBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="copy-toast" id="toast">Copied to clipboard!</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let result = null;
+let activeTab = 'ddl';
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    activeTab = tab.dataset.tab;
+    renderOutput();
+  });
+});
+
+function renderOutput() {
+  if (!result) return;
+  const out = $('output');
+  if (activeTab === 'ddl') out.textContent = result.ddl;
+  else if (activeTab === 'inserts') out.textContent = result.inserts;
+  else if (activeTab === 'copy') out.textContent = result.copy;
+}
+
+let debounce = null;
+$('input').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(convert, 300); });
+$('tableName').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(convert, 300); });
+$('schemaName').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(convert, 300); });
+$('addId').addEventListener('change', convert);
+$('addIndexes').addEventListener('change', convert);
+
+async function convert() {
+  const data = $('input').value.trim();
+  if (!data) {
+    result = null;
+    $('output').innerHTML = '<span style="color:var(--muted)">SQL output will appear here...</span>';
+    $('stats').style.display = 'none';
+    $('columnsPanel').style.display = 'none';
+    $('formatBadge').innerHTML = '';
+    return;
+  }
+  try {
+    const resp = await fetch('/api/convert', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        data,
+        tableName: $('tableName').value || 'imported_data',
+        schema: $('schemaName').value || 'public',
+        addId: $('addId').checked,
+        includeIndexes: $('addIndexes').checked,
+      })
+    });
+    const json = await resp.json();
+    if (json.error) { $('output').textContent = '-- Error: ' + json.error; return; }
+    result = json;
+    renderOutput();
+    $('rowCount').textContent = json.rowCount;
+    $('colCount').textContent = json.columnCount;
+    $('fmtLabel').textContent = json.format.toUpperCase();
+    $('stats').style.display = 'flex';
+    $('formatBadge').innerHTML = `<span class="badge badge-green">${json.format.toUpperCase()}</span>`;
+    const tbody = $('columnsBody');
+    tbody.innerHTML = '';
+    for (const col of json.columns) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${esc(col.original)}</td><td><code>${esc(col.pgName)}</code></td><td><code>${esc(col.pgType)}</code></td><td>${col.nullable ? 'Yes' : 'No'}</td><td>${col.isUnique ? 'Yes' : '-'}</td>`;
+      tbody.appendChild(tr);
+    }
+    $('columnsPanel').style.display = 'block';
+  } catch (err) { $('output').textContent = '-- Error: ' + err.message; }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function copyOutput() {
+  const text = $('output').textContent;
+  if (!text || text.startsWith('SQL output')) return;
+  navigator.clipboard.writeText(text).then(() => {
+    $('toast').classList.add('show');
+    setTimeout(() => $('toast').classList.remove('show'), 1500);
+  });
+}
+
+function loadSample() {
+  $('input').value = `name,email,age,balance,signup_date,is_premium,user_id,preferences
+Alice Johnson,alice@example.com,29,1250.00,2024-01-15,true,550e8400-e29b-41d4-a716-446655440001,"{""theme"":""dark""}"
+Bob Smith,bob@smith.io,45,0.00,2024-03-22,false,550e8400-e29b-41d4-a716-446655440002,"{""theme"":""light""}"
+Carol White,carol@white.dev,,8750.25,2024-06-01T14:30:00+00:00,true,550e8400-e29b-41d4-a716-446655440003,"{""theme"":""dark"",""lang"":""pt""}"
+Dave Brown,dave@brown.co,31,125.50,2024-08-10,false,550e8400-e29b-41d4-a716-446655440004,"{""notifications"":true}"`;
+  $('tableName').value = 'users';
+  convert();
+}
+</script>
+</body>
+</html>

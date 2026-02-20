@@ -3,341 +3,46 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>pgsheet - CSV/JSON to Postgres SQL</title>
-<style>
-  :root {
-    --bg: #0f1117;
-    --surface: #1a1d27;
-    --border: #2a2d3a;
-    --text: #e1e4ed;
-    --muted: #8b8fa3;
-    --accent: #6366f1;
-    --accent-hover: #818cf8;
-    --green: #22c55e;
-    --code-bg: #12141c;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-  }
-  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
-  header { text-align: center; padding: 32px 0 24px; }
-  header h1 { font-size: 2rem; font-weight: 700; }
-  header h1 span { color: var(--accent); }
-  header p { color: var(--muted); margin-top: 8px; font-size: 1.05rem; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
-  @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
-  .panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-  }
-  .panel-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-    background: rgba(255,255,255,0.02);
-  }
-  .panel-header h3 { font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
-  textarea, pre {
-    width: 100%;
-    min-height: 400px;
-    padding: 16px;
-    background: var(--code-bg);
-    color: var(--text);
-    border: none;
-    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-    font-size: 13px;
-    line-height: 1.6;
-    resize: vertical;
-    outline: none;
-  }
-  pre { overflow: auto; white-space: pre-wrap; word-break: break-word; cursor: text; user-select: all; }
-  .controls {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-    padding: 16px 0;
-  }
-  .control-group { display: flex; align-items: center; gap: 8px; }
-  .control-group label { color: var(--muted); font-size: 0.85rem; }
-  input[type="text"] {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 10px;
-    color: var(--text);
-    font-size: 0.85rem;
-    width: 140px;
-  }
-  input[type="text"]:focus { border-color: var(--accent); outline: none; }
-  .btn {
-    padding: 8px 16px;
-    border-radius: 6px;
-    border: none;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .btn-primary { background: var(--accent); color: white; }
-  .btn-primary:hover { background: var(--accent-hover); }
-  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
-  .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
-  .btn-sm { padding: 4px 10px; font-size: 0.8rem; }
-  .tabs { display: flex; gap: 2px; }
-  .tab {
-    padding: 6px 14px;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--muted);
-    border: none;
-    cursor: pointer;
-    font-size: 0.82rem;
-    font-weight: 500;
-    transition: all 0.15s;
-  }
-  .tab.active { background: var(--accent); color: white; }
-  .tab:hover:not(.active) { color: var(--text); }
-  .stats {
-    display: flex;
-    gap: 20px;
-    padding: 12px 16px;
-    border-top: 1px solid var(--border);
-    background: rgba(255,255,255,0.02);
-  }
-  .stat { font-size: 0.8rem; color: var(--muted); }
-  .stat strong { color: var(--text); }
-  .badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-  .badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
-  .columns-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-  .columns-table th, .columns-table td {
-    padding: 6px 12px;
-    text-align: left;
-    font-size: 0.82rem;
-    border-bottom: 1px solid var(--border);
-  }
-  .columns-table th { color: var(--muted); font-weight: 600; }
-  .columns-table td code {
-    background: rgba(99,102,241,0.1);
-    color: var(--accent-hover);
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-size: 0.8rem;
-  }
-  .info-panel { padding: 16px; }
-  .copy-toast {
-    position: fixed;
-    bottom: 24px;
-    right: 24px;
-    background: var(--green);
-    color: #000;
-    padding: 10px 20px;
-    border-radius: 8px;
-    font-weight: 600;
-    font-size: 0.85rem;
-    opacity: 0;
-    transform: translateY(10px);
-    transition: all 0.2s;
-    pointer-events: none;
-  }
-  .copy-toast.show { opacity: 1; transform: translateY(0); }
-  .sample-link { color: var(--accent); cursor: pointer; text-decoration: underline; font-size: 0.85rem; }
-  .sample-link:hover { color: var(--accent-hover); }
-  .checkbox-group { display: flex; align-items: center; gap: 6px; }
-  .checkbox-group input[type="checkbox"] { accent-color: var(--accent); }
-  .checkbox-group label { color: var(--muted); font-size: 0.85rem; cursor: pointer; }
-</style>
+<title>pgtools - Postgres Developer Toolkit</title>
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
+<nav>
+  <div class="brand"><span>pg</span>tools</div>
+  <div class="tools">
+    <a href="/" class="active">Home</a>
+    <a href="/sheet">Sheet</a>
+    <a href="/query">Query</a>
+  </div>
+</nav>
 <div class="container">
-  <header>
-    <h1><span>pg</span>sheet</h1>
-    <p>Paste CSV or JSON. Get production-ready Postgres SQL.</p>
-  </header>
-
-  <div class="controls">
-    <div class="control-group">
-      <label>Table:</label>
-      <input type="text" id="tableName" value="imported_data" placeholder="table_name">
-    </div>
-    <div class="control-group">
-      <label>Schema:</label>
-      <input type="text" id="schemaName" value="public" placeholder="schema">
-    </div>
-    <div class="checkbox-group">
-      <input type="checkbox" id="addId" checked>
-      <label for="addId">Auto ID</label>
-    </div>
-    <div class="checkbox-group">
-      <input type="checkbox" id="addIndexes" checked>
-      <label for="addIndexes">Indexes</label>
-    </div>
-    <span style="flex:1"></span>
-    <span class="sample-link" onclick="loadSample()">Load sample data</span>
+  <div class="hero">
+    <h1><span>pg</span>tools</h1>
+    <p>Free, fast Postgres developer utilities. No signup, no tracking, no BS.</p>
   </div>
 
-  <div class="grid">
-    <div class="panel">
-      <div class="panel-header">
-        <h3>Input Data</h3>
-        <span id="formatBadge"></span>
-      </div>
-      <textarea id="input" placeholder="Paste your CSV or JSON data here..."></textarea>
-    </div>
-
-    <div class="panel">
-      <div class="panel-header">
-        <h3>Output SQL</h3>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <div class="tabs">
-            <button class="tab active" data-tab="ddl">DDL</button>
-            <button class="tab" data-tab="inserts">INSERT</button>
-            <button class="tab" data-tab="copy">COPY</button>
-          </div>
-          <button class="btn btn-ghost btn-sm" onclick="copyOutput()">Copy</button>
-        </div>
-      </div>
-      <pre id="output"><span style="color:var(--muted)">SQL output will appear here...</span></pre>
-      <div class="stats" id="stats" style="display:none">
-        <span class="stat">Rows: <strong id="rowCount">0</strong></span>
-        <span class="stat">Columns: <strong id="colCount">0</strong></span>
-        <span class="stat">Format: <strong id="fmtLabel">-</strong></span>
-      </div>
-    </div>
-  </div>
-
-  <div class="panel" id="columnsPanel" style="margin-top:20px;display:none">
-    <div class="panel-header"><h3>Column Analysis</h3></div>
-    <div class="info-panel">
-      <table class="columns-table">
-        <thead><tr><th>Source</th><th>Postgres Name</th><th>Type</th><th>Nullable</th><th>Unique</th></tr></thead>
-        <tbody id="columnsBody"></tbody>
-      </table>
-    </div>
+  <div class="tool-cards">
+    <a href="/sheet" class="tool-card">
+      <h3><span>pg</span>sheet</h3>
+      <p>Paste CSV or JSON data and get production-ready Postgres SQL. Auto-detects types, generates CREATE TABLE, INSERT, and COPY statements.</p>
+      <div class="tag">Data Import</div>
+    </a>
+    <a href="/query" class="tool-card">
+      <h3><span>pg</span>query</h3>
+      <p>Format messy SQL, catch common mistakes, and get optimization suggestions. Finds missing WHERE clauses, SELECT *, implicit casts, and more.</p>
+      <div class="tag">SQL Analysis</div>
+    </a>
+    <a class="tool-card" style="opacity:0.5;cursor:default">
+      <h3><span>pg</span>schema</h3>
+      <p>Visual schema designer for Postgres. Define tables, relationships, and constraints. Export as migration SQL.</p>
+      <div class="tag">Coming Soon</div>
+    </a>
+    <a class="tool-card" style="opacity:0.5;cursor:default">
+      <h3><span>pg</span>diff</h3>
+      <p>Compare two schemas and generate ALTER TABLE migration scripts. Never write migrations by hand again.</p>
+      <div class="tag">Coming Soon</div>
+    </a>
   </div>
 </div>
-
-<div class="copy-toast" id="toast">Copied to clipboard!</div>
-
-<script>
-const $ = id => document.getElementById(id);
-let result = null;
-let activeTab = 'ddl';
-
-// Tab switching
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    activeTab = tab.dataset.tab;
-    renderOutput();
-  });
-});
-
-function renderOutput() {
-  if (!result) return;
-  const out = $('output');
-  if (activeTab === 'ddl') out.textContent = result.ddl;
-  else if (activeTab === 'inserts') out.textContent = result.inserts;
-  else if (activeTab === 'copy') out.textContent = result.copy;
-}
-
-// Debounced convert
-let debounce = null;
-$('input').addEventListener('input', () => {
-  clearTimeout(debounce);
-  debounce = setTimeout(convert, 300);
-});
-
-$('tableName').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(convert, 300); });
-$('schemaName').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(convert, 300); });
-$('addId').addEventListener('change', convert);
-$('addIndexes').addEventListener('change', convert);
-
-async function convert() {
-  const data = $('input').value.trim();
-  if (!data) {
-    result = null;
-    $('output').innerHTML = '<span style="color:var(--muted)">SQL output will appear here...</span>';
-    $('stats').style.display = 'none';
-    $('columnsPanel').style.display = 'none';
-    $('formatBadge').innerHTML = '';
-    return;
-  }
-
-  try {
-    const resp = await fetch('/api/convert', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        data,
-        tableName: $('tableName').value || 'imported_data',
-        schema: $('schemaName').value || 'public',
-        addId: $('addId').checked,
-        includeIndexes: $('addIndexes').checked,
-      })
-    });
-    const json = await resp.json();
-    if (json.error) {
-      $('output').textContent = '-- Error: ' + json.error;
-      return;
-    }
-    result = json;
-    renderOutput();
-
-    $('rowCount').textContent = json.rowCount;
-    $('colCount').textContent = json.columnCount;
-    $('fmtLabel').textContent = json.format.toUpperCase();
-    $('stats').style.display = 'flex';
-    $('formatBadge').innerHTML = `<span class="badge badge-green">${json.format.toUpperCase()}</span>`;
-
-    // Columns table
-    const tbody = $('columnsBody');
-    tbody.innerHTML = '';
-    for (const col of json.columns) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${col.original}</td><td><code>${col.pgName}</code></td><td><code>${col.pgType}</code></td><td>${col.nullable ? 'Yes' : 'No'}</td><td>${col.isUnique ? 'Yes' : '-'}</td>`;
-      tbody.appendChild(tr);
-    }
-    $('columnsPanel').style.display = 'block';
-  } catch (err) {
-    $('output').textContent = '-- Error: ' + err.message;
-  }
-}
-
-function copyOutput() {
-  const text = $('output').textContent;
-  if (!text || text.startsWith('SQL output')) return;
-  navigator.clipboard.writeText(text).then(() => {
-    const toast = $('toast');
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 1500);
-  });
-}
-
-function loadSample() {
-  $('input').value = `name,email,age,balance,signup_date,is_premium,user_id,preferences
-Alice Johnson,alice@example.com,29,1250.00,2024-01-15,true,550e8400-e29b-41d4-a716-446655440001,"{""theme"":""dark""}"
-Bob Smith,bob@smith.io,45,0.00,2024-03-22,false,550e8400-e29b-41d4-a716-446655440002,"{""theme"":""light""}"
-Carol White,carol@white.dev,,8750.25,2024-06-01T14:30:00+00:00,true,550e8400-e29b-41d4-a716-446655440003,"{""theme"":""dark"",""lang"":""pt""}"
-Dave Brown,dave@brown.co,31,125.50,2024-08-10,false,550e8400-e29b-41d4-a716-446655440004,"{""notifications"":true}"`;
-  $('tableName').value = 'users';
-  convert();
-}
-</script>
 </body>
 </html>

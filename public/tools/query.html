@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pgquery - SQL Formatter & Analyzer | pgtools</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav>
+  <div class="brand"><span>pg</span>tools</div>
+  <div class="tools">
+    <a href="/">Home</a>
+    <a href="/sheet">Sheet</a>
+    <a href="/query" class="active">Query</a>
+  </div>
+</nav>
+<div class="container">
+  <div class="page-header">
+    <h2><span style="color:var(--accent)">pg</span>query</h2>
+    <p>Format SQL, catch mistakes, get Postgres optimization tips.</p>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-primary" onclick="run()">Format & Analyze</button>
+    <button class="btn btn-ghost" onclick="copyOutput()">Copy Formatted</button>
+    <span style="flex:1"></span>
+    <span class="sample-link" onclick="loadSample()">Load sample query</span>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-header">
+        <h3>Input SQL</h3>
+      </div>
+      <textarea id="input" placeholder="Paste your SQL query here..."></textarea>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <h3>Formatted SQL</h3>
+        <button class="btn btn-ghost btn-sm" onclick="copyOutput()">Copy</button>
+      </div>
+      <pre id="output" class="code-output"><span style="color:var(--muted)">Formatted SQL will appear here...</span></pre>
+    </div>
+  </div>
+
+  <div class="panel" id="findingsPanel" style="margin-top:20px;display:none">
+    <div class="panel-header">
+      <h3>Analysis</h3>
+      <span id="findingsCount"></span>
+    </div>
+    <div class="info-panel">
+      <ul class="findings" id="findingsList"></ul>
+    </div>
+  </div>
+</div>
+
+<div class="copy-toast" id="toast">Copied to clipboard!</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// Also auto-run on input with debounce
+let debounce = null;
+$('input').addEventListener('input', () => {
+  clearTimeout(debounce);
+  debounce = setTimeout(run, 500);
+});
+
+async function run() {
+  const sql = $('input').value.trim();
+  if (!sql) {
+    $('output').innerHTML = '<span style="color:var(--muted)">Formatted SQL will appear here...</span>';
+    $('findingsPanel').style.display = 'none';
+    return;
+  }
+  try {
+    const resp = await fetch('/api/format', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql })
+    });
+    const json = await resp.json();
+    if (json.error) { $('output').textContent = '-- Error: ' + json.error; return; }
+
+    $('output').textContent = json.formatted;
+
+    if (json.findings && json.findings.length > 0) {
+      const list = $('findingsList');
+      list.innerHTML = '';
+      const icons = { error: '!', warn: '?', info: 'i' };
+      for (const f of json.findings) {
+        const li = document.createElement('li');
+        li.className = f.level === 'error' ? 'error' : f.level === 'warn' ? 'warn' : 'info';
+        li.innerHTML = `<span class="icon"><span class="badge badge-${f.level === 'error' ? 'red' : f.level === 'warn' ? 'yellow' : 'green'}">${icons[f.level]}</span></span><span>${esc(f.message)}</span>`;
+        list.appendChild(li);
+      }
+      $('findingsCount').innerHTML = `<span class="badge badge-${json.findings.some(f => f.level === 'error') ? 'red' : 'yellow'}">${json.findings.length} finding${json.findings.length > 1 ? 's' : ''}</span>`;
+      $('findingsPanel').style.display = 'block';
+    } else {
+      $('findingsPanel').style.display = 'none';
+    }
+  } catch (err) { $('output').textContent = '-- Error: ' + err.message; }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+function copyOutput() {
+  const text = $('output').textContent;
+  if (!text || text.startsWith('Formatted')) return;
+  navigator.clipboard.writeText(text).then(() => {
+    $('toast').classList.add('show');
+    setTimeout(() => $('toast').classList.remove('show'), 1500);
+  });
+}
+
+function loadSample() {
+  $('input').value = `select * from users u left join orders o on u.id=o.user_id left join products p on o.product_id=p.id left join categories c on p.category_id=c.id left join reviews r on p.id=r.product_id where u.created_at > now() - interval '30 days' and u.status='active' and o.total > 100 and coalesce(u.name, '') like '%john%' order by o.created_at desc`;
+  run();
+}
+</script>
+</body>
+</html>
