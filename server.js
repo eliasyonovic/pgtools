@@ -22,6 +22,7 @@ const ROUTES = {
   '/sheet': '/tools/sheet.html',
   '/query': '/tools/query.html',
   '/schema': '/tools/schema.html',
+  '/explain': '/tools/explain.html',
 };
 
 function readBody(req) {
