@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pgtools - Postgres Developer Toolkit</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav>
+  <div class="brand"><span>pg</span>tools</div>
+  <div class="tools">
+    <a href="/" class="active">Home</a>
+    <a href="/sheet">Sheet</a>
+    <a href="/query">Query</a>
+    <a href="/schema">Schema</a>
+  </div>
+</nav>
+<div class="container">
+  <div class="hero">
+    <h1><span>pg</span>tools</h1>
+    <p>Free, fast Postgres developer utilities. No signup, no tracking, no BS.</p>
+  </div>
+
+  <div class="tool-cards">
+    <a href="/sheet" class="tool-card">
+      <h3><span>pg</span>sheet</h3>
+      <p>Paste CSV or JSON data and get production-ready Postgres SQL. Auto-detects types, generates CREATE TABLE, INSERT, and COPY statements.</p>
+      <div class="tag">Data Import</div>
+    </a>
+    <a href="/query" class="tool-card">
+      <h3><span>pg</span>query</h3>
+      <p>Format messy SQL, catch common mistakes, and get optimization suggestions. Finds missing WHERE clauses, SELECT *, implicit casts, and more.</p>
+      <div class="tag">SQL Analysis</div>
+    </a>
+    <a href="/schema" class="tool-card">
+      <h3><span>pg</span>schema</h3>
+      <p>Visual schema designer for Postgres. Define tables, relationships, and constraints. Export as migration SQL.</p>
+      <div class="tag">Schema Design</div>
+    </a>
+    <a class="tool-card" style="opacity:0.5;cursor:default">
+      <h3><span>pg</span>diff</h3>
+      <p>Compare two schemas and generate ALTER TABLE migration scripts. Never write migrations by hand again.</p>
+      <div class="tag">Coming Soon</div>
+    </a>
+  </div>
+</div>
+</body>
+</html>
