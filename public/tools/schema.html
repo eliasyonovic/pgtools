@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pgschema - Visual Schema Designer | pgtools</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .schema-layout { display: grid; grid-template-columns: 280px 1fr; gap: 0; margin-top: 16px; height: calc(100vh - 180px); min-height: 500px; }
+  .sidebar { background: var(--surface); border: 1px solid var(--border); border-radius: 12px 0 0 12px; overflow-y: auto; }
+  .sidebar-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-section h4 { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .canvas-wrap { background: var(--code-bg); border: 1px solid var(--border); border-left: none; border-radius: 0 12px 12px 0; position: relative; overflow: hidden; }
+  .canvas-wrap svg { width: 100%; height: 100%; }
+
+  /* Table cards on canvas */
+  .tbl-card { cursor: move; }
+  .tbl-card rect.bg { fill: var(--surface); stroke: var(--border); stroke-width: 1; rx: 8; }
+  .tbl-card rect.header { fill: var(--accent); rx: 8; }
+  .tbl-card rect.header-mask { fill: var(--accent); }
+  .tbl-card text.tbl-name { fill: white; font-size: 13px; font-weight: 600; font-family: -apple-system, sans-serif; }
+  .tbl-card text.col-text { fill: var(--text); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+  .tbl-card text.col-type { fill: var(--muted); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+  .tbl-card text.col-key { fill: var(--yellow); font-size: 11px; font-weight: 700; }
+  .tbl-card:hover rect.bg { stroke: var(--accent); }
+  .rel-line { stroke: var(--accent); stroke-width: 1.5; fill: none; opacity: 0.6; }
+
+  /* Sidebar table list */
+  .tbl-item { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-radius: 6px; cursor: pointer; margin-bottom: 2px; font-size: 0.85rem; }
+  .tbl-item:hover { background: rgba(255,255,255,0.05); }
+  .tbl-item.active { background: rgba(99,102,241,0.15); color: var(--accent-hover); }
+  .tbl-item .del { opacity: 0; color: var(--red); cursor: pointer; font-size: 0.9rem; }
+  .tbl-item:hover .del { opacity: 1; }
+
+  /* Column editor */
+  .col-editor { margin-top: 8px; }
+  .col-row { display: grid; grid-template-columns: 1fr 90px 24px 24px; gap: 4px; margin-bottom: 4px; align-items: center; }
+  .col-row input, .col-row select { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; color: var(--text); font-size: 0.8rem; }
+  .col-row .icon-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; border: none; background: transparent; color: var(--muted); cursor: pointer; font-size: 0.85rem; }
+  .col-row .icon-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+  .col-row .icon-btn.pk { color: var(--yellow); font-weight: 700; }
+  .add-btn { width: 100%; padding: 6px; border-radius: 6px; border: 1px dashed var(--border); background: transparent; color: var(--muted); cursor: pointer; font-size: 0.8rem; margin-top: 4px; }
+  .add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* FK editor */
+  .fk-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: 4px; margin-bottom: 4px; align-items: center; font-size: 0.8rem; }
+  .fk-row select { background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px; color: var(--text); font-size: 0.8rem; }
+  .fk-arrow { color: var(--muted); text-align: center; }
+
+  /* SQL output */
+  .sql-output { position: absolute; bottom: 0; left: 0; right: 0; max-height: 200px; background: var(--surface); border-top: 1px solid var(--border); overflow-y: auto; display: none; }
+  .sql-output pre { padding: 12px; font-size: 12px; margin: 0; min-height: auto; }
+  .sql-toggle { position: absolute; bottom: 8px; right: 8px; z-index: 5; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="brand"><span>pg</span>tools</div>
+  <div class="tools">
+    <a href="/">Home</a>
+    <a href="/sheet">Sheet</a>
+    <a href="/query">Query</a>
+    <a href="/schema" class="active">Schema</a>
+  </div>
+</nav>
+<div class="container" style="padding-bottom:0">
+  <div class="page-header" style="display:flex;align-items:center;justify-content:space-between">
+    <div>
+      <h2><span style="color:var(--accent)">pg</span>schema</h2>
+      <p>Design your database visually. Export as Postgres DDL.</p>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost btn-sm" onclick="exportSQL()">Export SQL</button>
+      <button class="btn btn-ghost btn-sm" onclick="saveProject()">Save JSON</button>
+      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('loadFile').click()">Load JSON</button>
+      <input type="file" id="loadFile" accept=".json" style="display:none" onchange="loadProject(event)">
+    </div>
+  </div>
+
+  <div class="schema-layout">
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <h4>Tables</h4>
+        <div id="tableList"></div>
+        <button class="add-btn" onclick="addTable()">+ Add Table</button>
+      </div>
+      <div class="sidebar-section" id="colSection" style="display:none">
+        <h4 id="colSectionTitle">Columns</h4>
+        <div id="colEditor" class="col-editor"></div>
+        <button class="add-btn" onclick="addColumn()">+ Add Column</button>
+      </div>
+      <div class="sidebar-section">
+        <h4>Foreign Keys</h4>
+        <div id="fkEditor"></div>
+        <button class="add-btn" onclick="addFK()">+ Add Foreign Key</button>
+      </div>
+    </div>
+    <div class="canvas-wrap" id="canvasWrap">
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+      <button class="btn btn-primary btn-sm sql-toggle" onclick="toggleSQL()">Show SQL</button>
+      <div class="sql-output" id="sqlOutput">
+        <pre id="sqlPre" class="code-output" style="min-height:auto"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="copy-toast" id="toast">Copied to clipboard!</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const PG_TYPES = ['bigint','integer','smallint','serial','bigserial','text','varchar(255)','char(1)','boolean','date','timestamp','timestamptz','numeric','real','double precision','uuid','jsonb','json','bytea','inet','cidr','macaddr','interval','point','tsquery','tsvector','xml'];
+
+let schema = { tables: [], fks: [], _nextId: 1 };
+let selectedTable = null;
+let dragState = null;
+
+function uid() { return 't' + (schema._nextId++); }
+
+function addTable() {
+  const id = uid();
+  const count = schema.tables.length;
+  schema.tables.push({
+    id, name: 'table_' + count,
+    x: 40 + (count % 3) * 260, y: 40 + Math.floor(count / 3) * 200,
+    columns: [{ name: 'id', type: 'bigserial', pk: true }]
+  });
+  selectTable(id);
+  render();
+}
+
+function removeTable(id) {
+  schema.tables = schema.tables.filter(t => t.id !== id);
+  schema.fks = schema.fks.filter(f => f.from.table !== id && f.to.table !== id);
+  if (selectedTable === id) { selectedTable = null; $('colSection').style.display = 'none'; }
+  render();
+}
+
+function selectTable(id) {
+  selectedTable = id;
+  renderSidebar();
+  renderCanvas();
+}
+
+function getTable(id) { return schema.tables.find(t => t.id === id); }
+
+function addColumn() {
+  if (!selectedTable) return;
+  const tbl = getTable(selectedTable);
+  tbl.columns.push({ name: 'column_' + tbl.columns.length, type: 'text', pk: false });
+  render();
+}
+
+function removeColumn(idx) {
+  if (!selectedTable) return;
+  const tbl = getTable(selectedTable);
+  tbl.columns.splice(idx, 1);
+  render();
+}
+
+function togglePK(idx) {
+  if (!selectedTable) return;
+  const tbl = getTable(selectedTable);
+  tbl.columns[idx].pk = !tbl.columns[idx].pk;
+  render();
+}
+
+function updateCol(idx, field, value) {
+  if (!selectedTable) return;
+  const tbl = getTable(selectedTable);
+  tbl.columns[idx][field] = value;
+  // Also update table name display if it changed
+  render();
+}
+
+function updateTableName(id, name) {
+  const tbl = getTable(id);
+  if (tbl) tbl.name = name;
+  render();
+}
+
+function addFK() {
+  if (schema.tables.length < 2) return;
+  const t1 = schema.tables[0], t2 = schema.tables[1];
+  schema.fks.push({
+    id: uid(),
+    from: { table: t1.id, column: t1.columns[0]?.name || 'id' },
+    to: { table: t2.id, column: t2.columns[0]?.name || 'id' }
+  });
+  render();
+}
+
+function removeFK(id) {
+  schema.fks = schema.fks.filter(f => f.id !== id);
+  render();
+}
+
+function updateFK(id, side, field, value) {
+  const fk = schema.fks.find(f => f.id === id);
+  if (fk) fk[side][field] = value;
+  render();
+}
+
+function render() { renderSidebar(); renderCanvas(); }
+
+function renderSidebar() {
+  // Table list
+  const list = $('tableList');
+  list.innerHTML = '';
+  for (const tbl of schema.tables) {
+    const div = document.createElement('div');
+    div.className = 'tbl-item' + (tbl.id === selectedTable ? ' active' : '');
+    div.innerHTML = '<span>' + esc(tbl.name) + '</span><span class="del" onclick="event.stopPropagation();removeTable(\'' + tbl.id + '\')">x</span>';
+    div.onclick = () => selectTable(tbl.id);
+    list.appendChild(div);
+  }
+
+  // Column editor
+  if (selectedTable) {
+    const tbl = getTable(selectedTable);
+    $('colSection').style.display = 'block';
+    $('colSectionTitle').textContent = tbl.name + ' columns';
+    const editor = $('colEditor');
+    editor.innerHTML = '';
+    tbl.columns.forEach((col, i) => {
+      const row = document.createElement('div');
+      row.className = 'col-row';
+      row.innerHTML = '<input value="' + esc(col.name) + '" onchange="updateCol(' + i + ',\'name\',this.value)" placeholder="name">'
+        + '<select onchange="updateCol(' + i + ',\'type\',this.value)">' + PG_TYPES.map(t => '<option' + (t===col.type?' selected':'') + '>' + t + '</option>').join('') + '</select>'
+        + '<button class="icon-btn' + (col.pk?' pk':'') + '" onclick="togglePK(' + i + ')" title="Primary Key">K</button>'
+        + '<button class="icon-btn" onclick="removeColumn(' + i + ')" title="Remove">x</button>';
+      editor.appendChild(row);
+    });
+  } else {
+    $('colSection').style.display = 'none';
+  }
+
+  // FK editor
+  const fkDiv = $('fkEditor');
+  fkDiv.innerHTML = '';
+  for (const fk of schema.fks) {
+    const row = document.createElement('div');
+    row.className = 'fk-row';
+    const fromTbl = getTable(fk.from.table);
+    const toTbl = getTable(fk.to.table);
+
+    row.innerHTML = '<select onchange="updateFK(\'' + fk.id + '\',\'from\',\'table\',this.value);render()">'
+      + schema.tables.map(t => '<option value="' + t.id + '"' + (t.id===fk.from.table?' selected':'') + '>' + esc(t.name) + '</option>').join('')
+      + '</select><span class="fk-arrow">-></span>'
+      + '<select onchange="updateFK(\'' + fk.id + '\',\'to\',\'table\',this.value)">'
+      + schema.tables.map(t => '<option value="' + t.id + '"' + (t.id===fk.to.table?' selected':'') + '>' + esc(t.name) + '</option>').join('')
+      + '</select>';
+    fkDiv.appendChild(row);
+
+    // Column selects
+    const colRow = document.createElement('div');
+    colRow.className = 'fk-row';
+    colRow.innerHTML = '<select onchange="updateFK(\'' + fk.id + '\',\'from\',\'column\',this.value)">'
+      + (fromTbl ? fromTbl.columns.map(c => '<option' + (c.name===fk.from.column?' selected':'') + '>' + esc(c.name) + '</option>').join('') : '')
+      + '</select><span class="fk-arrow" style="cursor:pointer;color:var(--red)" onclick="removeFK(\'' + fk.id + '\')">x</span>'
+      + '<select onchange="updateFK(\'' + fk.id + '\',\'to\',\'column\',this.value)">'
+      + (toTbl ? toTbl.columns.map(c => '<option' + (c.name===fk.to.column?' selected':'') + '>' + esc(c.name) + '</option>').join('') : '')
+      + '</select>';
+    fkDiv.appendChild(colRow);
+  }
+}
+
+function renderCanvas() {
+  const svg = $('canvas');
+  svg.innerHTML = '';
+  const COL_H = 22, HDR_H = 30, PAD = 12, TBL_W = 220;
+
+  // Draw relationship lines first
+  for (const fk of schema.fks) {
+    const fromT = getTable(fk.from.table), toT = getTable(fk.to.table);
+    if (!fromT || !toT) continue;
+    const fromIdx = fromT.columns.findIndex(c => c.name === fk.from.column);
+    const toIdx = toT.columns.findIndex(c => c.name === fk.to.column);
+    const x1 = fromT.x + TBL_W, y1 = fromT.y + HDR_H + (fromIdx >= 0 ? fromIdx : 0) * COL_H + COL_H / 2;
+    const x2 = toT.x, y2 = toT.y + HDR_H + (toIdx >= 0 ? toIdx : 0) * COL_H + COL_H / 2;
+    const mx = (x1 + x2) / 2;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M' + x1 + ',' + y1 + ' C' + mx + ',' + y1 + ' ' + mx + ',' + y2 + ' ' + x2 + ',' + y2);
+    path.setAttribute('class', 'rel-line');
+    path.setAttribute('marker-end', 'url(#arrow)');
+    svg.appendChild(path);
+  }
+
+  // Arrow marker
+  const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+  defs.innerHTML = '<marker id="arrow" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="' + getComputedStyle(document.documentElement).getPropertyValue('--accent') + '" /></marker>';
+  svg.prepend(defs);
+
+  // Draw table cards
+  for (const tbl of schema.tables) {
+    const h = HDR_H + tbl.columns.length * COL_H + PAD;
+    const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('class', 'tbl-card');
+    g.setAttribute('transform', 'translate(' + tbl.x + ',' + tbl.y + ')');
+
+    // Background
+    const bg = rect(0, 0, TBL_W, h, 'bg');
+    g.appendChild(bg);
+
+    // Header
+    g.appendChild(rect(0, 0, TBL_W, HDR_H, 'header'));
+    if (tbl.columns.length > 0) g.appendChild(rect(0, HDR_H - 4, TBL_W, 4, 'header-mask'));
+
+    // Table name
+    const name = text(TBL_W / 2, 20, tbl.name, 'tbl-name');
+    name.setAttribute('text-anchor', 'middle');
+    g.appendChild(name);
+
+    // Columns
+    tbl.columns.forEach((col, i) => {
+      const y = HDR_H + i * COL_H + 16;
+      if (col.pk) g.appendChild(text(12, y, 'PK', 'col-key'));
+      g.appendChild(text(col.pk ? 32 : 12, y, col.name, 'col-text'));
+      const typeText = text(TBL_W - 12, y, col.type, 'col-type');
+      typeText.setAttribute('text-anchor', 'end');
+      g.appendChild(typeText);
+    });
+
+    // Drag handling
+    g.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      e.preventDefault();
+      selectTable(tbl.id);
+      const svgRect = svg.getBoundingClientRect();
+      dragState = { tbl, startX: e.clientX - tbl.x, startY: e.clientY - tbl.y };
+    });
+
+    svg.appendChild(g);
+  }
+}
+
+document.addEventListener('mousemove', (e) => {
+  if (!dragState) return;
+  dragState.tbl.x = Math.max(0, e.clientX - dragState.startX);
+  dragState.tbl.y = Math.max(0, e.clientY - dragState.startY);
+  renderCanvas();
+});
+document.addEventListener('mouseup', () => { dragState = null; });
+
+function rect(x, y, w, h, cls) {
+  const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  r.setAttribute('x', x); r.setAttribute('y', y); r.setAttribute('width', w); r.setAttribute('height', h);
+  r.setAttribute('class', cls);
+  return r;
+}
+function text(x, y, content, cls) {
+  const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  t.setAttribute('x', x); t.setAttribute('y', y); t.setAttribute('class', cls);
+  t.textContent = content;
+  return t;
+}
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// SQL generation
+function generateSchemaSQL() {
+  let sql = '';
+  for (const tbl of schema.tables) {
+    sql += 'CREATE TABLE ' + tbl.name + ' (\n';
+    const lines = [];
+    const pks = tbl.columns.filter(c => c.pk).map(c => c.name);
+    for (const col of tbl.columns) {
+      let line = '  ' + col.name + ' ' + col.type;
+      if (col.pk && pks.length === 1 && (col.type === 'serial' || col.type === 'bigserial')) {
+        line += ' PRIMARY KEY';
+      } else if (!col.pk) {
+        // not null by default for non-pk
+      }
+      lines.push(line);
+    }
+    if (pks.length > 1 || (pks.length === 1 && !['serial','bigserial'].includes(tbl.columns.find(c=>c.pk)?.type))) {
+      lines.push('  PRIMARY KEY (' + pks.join(', ') + ')');
+    }
+    sql += lines.join(',\n') + '\n);\n\n';
+  }
+  for (const fk of schema.fks) {
+    const fromT = getTable(fk.from.table), toT = getTable(fk.to.table);
+    if (!fromT || !toT) continue;
+    sql += 'ALTER TABLE ' + fromT.name + '\n  ADD CONSTRAINT fk_' + fromT.name + '_' + fk.from.column;
+    sql += '\n  FOREIGN KEY (' + fk.from.column + ') REFERENCES ' + toT.name + ' (' + fk.to.column + ');\n\n';
+  }
+  return sql;
+}
+
+function toggleSQL() {
+  const out = $('sqlOutput');
+  const btn = out.previousElementSibling;
+  if (out.style.display === 'none' || !out.style.display) {
+    out.style.display = 'block';
+    btn.textContent = 'Hide SQL';
+    $('sqlPre').textContent = generateSchemaSQL() || '-- Add tables to see SQL';
+  } else {
+    out.style.display = 'none';
+    btn.textContent = 'Show SQL';
+  }
+}
+
+function exportSQL() {
+  const sql = generateSchemaSQL();
+  if (!sql) return;
+  navigator.clipboard.writeText(sql).then(() => {
+    $('toast').classList.add('show');
+    setTimeout(() => $('toast').classList.remove('show'), 1500);
+  });
+}
+
+function saveProject() {
+  const data = JSON.stringify(schema, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'schema.json';
+  a.click();
+}
+
+function loadProject(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      schema = JSON.parse(reader.result);
+      selectedTable = null;
+      render();
+    } catch { alert('Invalid JSON file'); }
+  };
+  reader.readAsText(file);
+}
+
+// Start with a sample schema
+schema.tables = [
+  { id: uid(), name: 'users', x: 40, y: 40, columns: [
+    { name: 'id', type: 'bigserial', pk: true },
+    { name: 'email', type: 'varchar(255)', pk: false },
+    { name: 'name', type: 'text', pk: false },
+    { name: 'created_at', type: 'timestamptz', pk: false },
+  ]},
+  { id: uid(), name: 'orders', x: 360, y: 40, columns: [
+    { name: 'id', type: 'bigserial', pk: true },
+    { name: 'user_id', type: 'bigint', pk: false },
+    { name: 'total', type: 'numeric', pk: false },
+    { name: 'status', type: 'text', pk: false },
+    { name: 'created_at', type: 'timestamptz', pk: false },
+  ]},
+  { id: uid(), name: 'order_items', x: 680, y: 40, columns: [
+    { name: 'id', type: 'bigserial', pk: true },
+    { name: 'order_id', type: 'bigint', pk: false },
+    { name: 'product', type: 'text', pk: false },
+    { name: 'qty', type: 'integer', pk: false },
+    { name: 'price', type: 'numeric', pk: false },
+  ]},
+];
+schema.fks = [
+  { id: uid(), from: { table: schema.tables[1].id, column: 'user_id' }, to: { table: schema.tables[0].id, column: 'id' } },
+  { id: uid(), from: { table: schema.tables[2].id, column: 'order_id' }, to: { table: schema.tables[1].id, column: 'id' } },
+];
+render();
+</script>
+</body>
+</html>

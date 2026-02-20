@@ -21,6 +21,7 @@ const ROUTES = {
   '/': '/index.html',
   '/sheet': '/tools/sheet.html',
   '/query': '/tools/query.html',
+  '/schema': '/tools/schema.html',
 };
 
 function readBody(req) {
