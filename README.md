@@ -1,44 +1,58 @@
-# pgsheet
+# pgtools
 
-Paste CSV or JSON. Get production-ready Postgres SQL.
+Free, fast Postgres developer utilities. No signup, no tracking, no BS.
 
-**pgsheet** auto-detects column types, generates `CREATE TABLE` DDL, `INSERT` statements, and `COPY` commands — optimized for Postgres.
+**Zero dependencies. Runs in the browser or as a CLI.**
 
-## Features
+## Tools
 
-- **Smart type detection**: boolean, smallint, integer, bigint, numeric, date, timestamp, timestamptz, uuid, jsonb, text
-- **Auto-detects format**: CSV (with delimiter detection) or JSON
-- **Generates 3 output formats**: DDL (CREATE TABLE), INSERT batches, COPY from stdin
-- **Suggests indexes** for UUID columns
-- **Handles edge cases**: nullable columns, reserved word escaping, nested JSON → jsonb, quoted CSV fields
-- **Real-time conversion** in the browser
+### pgsheet - CSV/JSON to Postgres SQL
+Paste CSV or JSON data and get production-ready Postgres SQL. Auto-detects column types, generates `CREATE TABLE`, `INSERT`, and `COPY` statements.
 
-## Quick Start
+### pgquery - SQL Formatter & Analyzer
+Format messy SQL and catch common Postgres mistakes: `UPDATE` without `WHERE`, `SELECT *`, leading wildcard `LIKE`, `NOT IN` null traps, large `OFFSET` pagination, and more.
+
+## Web UI
 
 ```bash
 node server.js
 # Open http://localhost:3000
 ```
 
-## API
+Everything runs client-side. Your data never leaves your browser.
+
+## CLI
 
 ```bash
-curl -X POST http://localhost:3000/api/convert \
-  -H 'Content-Type: application/json' \
-  -d '{"data":"name,age\nAlice,30\nBob,25","tableName":"users"}'
+# Install globally
+npm install -g pgtools
+
+# Convert CSV/JSON to SQL
+pgtools sheet data.csv --table users
+pgtools sheet data.json --table products --mode ddl
+
+# Format SQL
+cat query.sql | pgtools format -
+
+# Format + analyze SQL
+pgtools analyze slow-query.sql
 ```
 
-### Parameters
+### CLI Options
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| data | string | required | CSV or JSON text |
-| tableName | string | imported_data | Postgres table name |
-| schema | string | public | Schema name |
-| addId | boolean | true | Add auto-increment id column |
-| includeIndexes | boolean | true | Generate index suggestions |
+```
+pgtools sheet <file> [options]     Convert CSV/JSON to Postgres SQL
+  --table <name>      Table name (default: imported_data)
+  --schema <name>     Schema name (default: public)
+  --no-id             Don't add auto-increment id column
+  --no-indexes        Don't generate index suggestions
+  --mode <mode>       Output: ddl, inserts, copy, all (default: all)
 
-## Type Detection Rules
+pgtools format <file|->            Format SQL query
+pgtools analyze <file|->           Format + analyze SQL for issues
+```
+
+## Type Detection
 
 | Priority | Type | Pattern |
 |----------|------|---------|
@@ -52,9 +66,16 @@ curl -X POST http://localhost:3000/api/convert \
 | 8 | jsonb | valid JSON object/array |
 | 9 | text | everything else |
 
-## No Dependencies
+## SQL Analysis Rules
 
-Zero npm dependencies. Pure Node.js.
+- **UPDATE/DELETE without WHERE** - will modify/delete ALL rows
+- **SELECT \*** - performance issues, breaks on schema changes
+- **Leading wildcard LIKE** - can't use B-tree index
+- **NOT IN with subquery** - null trap, use NOT EXISTS
+- **ORDER BY without LIMIT** - sorts entire result set
+- **Large OFFSET** - use keyset pagination instead
+- **now() usage** - same value in entire transaction
+- **COALESCE in WHERE** - may prevent index usage
 
 ## License
 

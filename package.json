@@ -1,12 +1,38 @@
 {
-  "name": "pgsheet",
+  "name": "pgtools",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Postgres developer toolkit - CSV/JSON to SQL converter, SQL formatter & analyzer",
+  "main": "src/generator.js",
+  "bin": {
+    "pgtools": "./cli.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "postgres",
+    "postgresql",
+    "sql",
+    "csv",
+    "json",
+    "etl",
+    "formatter",
+    "analyzer",
+    "ddl",
+    "database"
+  ],
+  "author": "Elias Yonovic",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eliasyonovic/pgtools"
+  },
+  "homepage": "https://eliasyonovic.github.io/pgtools",
+  "files": [
+    "cli.js",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ]
 }

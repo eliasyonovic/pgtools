@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>pgsheet - CSV/JSON to Postgres SQL | pgtools</title>
 <link rel="stylesheet" href="/style.css">
+<script src="/pgtools.js"></script>
 </head>
 <body>
 <nav>
@@ -18,7 +19,7 @@
 <div class="container">
   <div class="page-header">
     <h2><span style="color:var(--accent)">pg</span>sheet</h2>
-    <p>Paste CSV or JSON. Get production-ready Postgres SQL.</p>
+    <p>Paste CSV or JSON. Get production-ready Postgres SQL. Your data never leaves your browser.</p>
   </div>
 
   <div class="controls">
@@ -86,8 +87,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-let result = null;
-let activeTab = 'ddl';
+let result = null, activeTab = 'ddl';
 
 document.querySelectorAll('.tab').forEach(tab => {
   tab.addEventListener('click', () => {
@@ -101,19 +101,17 @@ document.querySelectorAll('.tab').forEach(tab => {
 function renderOutput() {
   if (!result) return;
   const out = $('output');
-  if (activeTab === 'ddl') out.textContent = result.ddl;
-  else if (activeTab === 'inserts') out.textContent = result.inserts;
-  else if (activeTab === 'copy') out.textContent = result.copy;
+  out.textContent = activeTab === 'ddl' ? result.ddl : activeTab === 'inserts' ? result.inserts : result.copy;
 }
 
 let debounce = null;
-$('input').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(convert, 300); });
-$('tableName').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(convert, 300); });
-$('schemaName').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(convert, 300); });
-$('addId').addEventListener('change', convert);
-$('addIndexes').addEventListener('change', convert);
+$('input').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(doConvert, 200); });
+$('tableName').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(doConvert, 200); });
+$('schemaName').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(doConvert, 200); });
+$('addId').addEventListener('change', doConvert);
+$('addIndexes').addEventListener('change', doConvert);
 
-async function convert() {
+function doConvert() {
   const data = $('input').value.trim();
   if (!data) {
     result = null;
@@ -124,31 +122,22 @@ async function convert() {
     return;
   }
   try {
-    const resp = await fetch('/api/convert', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        data,
-        tableName: $('tableName').value || 'imported_data',
-        schema: $('schemaName').value || 'public',
-        addId: $('addId').checked,
-        includeIndexes: $('addIndexes').checked,
-      })
+    result = PGTools.convert(data, $('tableName').value || 'imported_data', {
+      schema: $('schemaName').value || 'public',
+      addId: $('addId').checked,
+      includeIndexes: $('addIndexes').checked,
     });
-    const json = await resp.json();
-    if (json.error) { $('output').textContent = '-- Error: ' + json.error; return; }
-    result = json;
     renderOutput();
-    $('rowCount').textContent = json.rowCount;
-    $('colCount').textContent = json.columnCount;
-    $('fmtLabel').textContent = json.format.toUpperCase();
+    $('rowCount').textContent = result.rowCount;
+    $('colCount').textContent = result.columnCount;
+    $('fmtLabel').textContent = result.format.toUpperCase();
     $('stats').style.display = 'flex';
-    $('formatBadge').innerHTML = `<span class="badge badge-green">${json.format.toUpperCase()}</span>`;
+    $('formatBadge').innerHTML = '<span class="badge badge-green">' + result.format.toUpperCase() + '</span>';
     const tbody = $('columnsBody');
     tbody.innerHTML = '';
-    for (const col of json.columns) {
+    for (const col of result.columns) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${esc(col.original)}</td><td><code>${esc(col.pgName)}</code></td><td><code>${esc(col.pgType)}</code></td><td>${col.nullable ? 'Yes' : 'No'}</td><td>${col.isUnique ? 'Yes' : '-'}</td>`;
+      tr.innerHTML = '<td>' + esc(col.original) + '</td><td><code>' + esc(col.pgName) + '</code></td><td><code>' + esc(col.pgType) + '</code></td><td>' + (col.nullable?'Yes':'No') + '</td><td>' + (col.isUnique?'Yes':'-') + '</td>';
       tbody.appendChild(tr);
     }
     $('columnsPanel').style.display = 'block';
@@ -156,24 +145,15 @@ async function convert() {
 }
 
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-
 function copyOutput() {
   const text = $('output').textContent;
   if (!text || text.startsWith('SQL output')) return;
-  navigator.clipboard.writeText(text).then(() => {
-    $('toast').classList.add('show');
-    setTimeout(() => $('toast').classList.remove('show'), 1500);
-  });
+  navigator.clipboard.writeText(text).then(() => { $('toast').classList.add('show'); setTimeout(() => $('toast').classList.remove('show'), 1500); });
 }
-
 function loadSample() {
-  $('input').value = `name,email,age,balance,signup_date,is_premium,user_id,preferences
-Alice Johnson,alice@example.com,29,1250.00,2024-01-15,true,550e8400-e29b-41d4-a716-446655440001,"{""theme"":""dark""}"
-Bob Smith,bob@smith.io,45,0.00,2024-03-22,false,550e8400-e29b-41d4-a716-446655440002,"{""theme"":""light""}"
-Carol White,carol@white.dev,,8750.25,2024-06-01T14:30:00+00:00,true,550e8400-e29b-41d4-a716-446655440003,"{""theme"":""dark"",""lang"":""pt""}"
-Dave Brown,dave@brown.co,31,125.50,2024-08-10,false,550e8400-e29b-41d4-a716-446655440004,"{""notifications"":true}"`;
+  $('input').value = 'name,email,age,balance,signup_date,is_premium,user_id,preferences\nAlice Johnson,alice@example.com,29,1250.00,2024-01-15,true,550e8400-e29b-41d4-a716-446655440001,"{""theme"":""dark""}"\nBob Smith,bob@smith.io,45,0.00,2024-03-22,false,550e8400-e29b-41d4-a716-446655440002,"{""theme"":""light""}"\nCarol White,carol@white.dev,,8750.25,2024-06-01T14:30:00+00:00,true,550e8400-e29b-41d4-a716-446655440003,"{""theme"":""dark"",""lang"":""pt""}"\nDave Brown,dave@brown.co,31,125.50,2024-08-10,false,550e8400-e29b-41d4-a716-446655440004,"{""notifications"":true}"';
   $('tableName').value = 'users';
-  convert();
+  doConvert();
 }
 </script>
 </body>
